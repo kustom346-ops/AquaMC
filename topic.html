@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AquaMC — Тема</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="grid-bg"></div>
+  <div id="particles" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;"></div>
+  <nav id="navbar" class="navbar"></nav>
+
+  <div class="container" id="topicContainer"></div>
+
+  <div class="footer">AQUAMC 2025</div>
+
+  <script src="js/auth.js"></script>
+  <script src="js/forum.js"></script>
+  <script src="js/particles.js"></script>
+  <script>
+    requireAuth();
+    initNavbar();
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const catId = Number(urlParams.get('catId'));
+    const topicId = urlParams.get('id');
+    const isNew = urlParams.get('new') === 'true';
+
+    const container = document.getElementById('topicContainer');
+
+    function escapeHtml(text) {
+      const d = document.createElement('div');
+      d.textContent = text;
+      return d.innerHTML;
+    }
+
+    function imageToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function openTopicSettings(cid, tid) {
+      const topic = getTopicById(cid, tid);
+      if (!topic) return;
+
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal">
+          <h2>НАСТРОЙКИ ТЕМЫ</h2>
+          <p style="color:#a78bfa; margin-bottom:1.5rem; font-size:1.1rem;">${escapeHtml(topic.title)}</p>
+          <div class="settings-section">
+            <h3>Префикс темы</h3>
+            <div class="quick-actions">
+              <select id="modalPrefix" style="background:#0f0720;border:1px solid #4c1d95;color:#f3e8ff;padding:0.5rem 1rem;font-family:inherit;flex:1;">
+                <option value="">Без префикса</option>
+                <option value="approved" ${topic.prefix === 'approved' ? 'selected' : ''}>Одобрено</option>
+                <option value="solved" ${topic.prefix === 'solved' ? 'selected' : ''}>Решено</option>
+                <option value="rejected" ${topic.prefix === 'rejected' ? 'selected' : ''}>Отклонено</option>
+                <option value="pending" ${topic.prefix === 'pending' ? 'selected' : ''}>На рассмотрении</option>
+                <option value="important" ${topic.prefix === 'important' ? 'selected' : ''}>Важно</option>
+              </select>
+              <button class="btn btn-sm" id="modalApplyPrefix">ПРИМЕНИТЬ</button>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3>Статус темы</h3>
+            <label class="toggle-switch">
+              <input type="checkbox" id="modalToggleLock" ${topic.locked ? 'checked' : ''}>
+              <span class="toggle-track"></span>
+              <span id="lockStatus">${topic.locked ? 'Тема закрыта' : 'Тема открыта'}</span>
+            </label>
+          </div>
+          <div class="settings-section" style="border-color:#991b1b;">
+            <h3 style="color:#fca5a5;">Удаление темы</h3>
+            <p style="color:#8b6fb0; font-size:0.8rem; margin-bottom:0.8rem;">Все ответы будут удалены безвозвратно.</p>
+            <button class="btn btn-danger btn-sm" id="modalDeleteTopic">УДАЛИТЬ ТЕМУ</button>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-sm" id="closeModalBtn">ЗАКРЫТЬ</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+
+      document.getElementById('closeModalBtn').addEventListener('click', () => overlay.remove());
+      overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+
+      document.getElementById('modalApplyPrefix').addEventListener('click', function() {
+        updateTopic(cid, tid, { prefix: document.getElementById('modalPrefix').value });
+        showToast('Префикс обновлён');
+        overlay.remove();
+        showTopic();
+      });
+
+      document.getElementById('modalToggleLock').addEventListener('change', function() {
+        updateTopic(cid, tid, { locked: this.checked });
+        document.getElementById('lockStatus').textContent = this.checked ? 'Тема закрыта' : 'Тема открыта';
+        showToast(this.checked ? 'Тема закрыта' : 'Тема открыта');
+        setTimeout(() => { overlay.remove(); showTopic(); }, 500);
+      });
+
+      document.getElementById('modalDeleteTopic').addEventListener('click', function() {
+        if (confirm('Удалить тему и все ответы?')) {
+          deleteTopic(cid, tid);
+          showToast('Тема удалена');
+          window.location.href = `category.html?id=${cid}`;
+        }
+      });
+    }
+
+    function showCreateTopicForm() {
+      const cat = getCategoryById(catId);
+      if (!cat) {
+        container.innerHTML = '<p>Раздел не найден.</p>';
+        return;
+      }
+
+      if (!cat.allowTopics) {
+        container.innerHTML = `
+          <div class="breadcrumb">
+            <a href="index.html">Разделы</a> <span>›</span>
+            <a href="category.html?id=${cat.id}">${escapeHtml(cat.name)}</a>
+          </div>
+          <p style="color:#fca5a5;">Создание тем в этом разделе отключено.</p>
+          <a href="category.html?id=${cat.id}" style="color:#a78bfa;">Вернуться в раздел</a>
+        `;
+        return;
+      }
+
+      container.innerHTML = `
+        <div class="breadcrumb">
+          <a href="index.html">Разделы</a> <span>›</span>
+          <a href="category.html?id=${cat.id}">${escapeHtml(cat.name)}</a> <span>›</span> Новая тема
+        </div>
+        <h1 class="page-title">НОВАЯ ТЕМА</h1>
+        <div class="form-card form-card-wide">
+          <form id="newTopicForm">
+            <div class="form-group">
+              <label>Префикс</label>
+              <select id="topicPrefix">
+                <option value="">Без префикса</option>
+                <option value="approved">Одобрено</option>
+                <option value="solved">Решено</option>
+                <option value="rejected">Отклонено</option>
+                <option value="pending">На рассмотрении</option>
+                <option value="important">Важно</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Заголовок</label>
+              <input type="text" id="topicTitle" required minlength="3">
+            </div>
+            <div class="form-group">
+              <label>Сообщение</label>
+              <textarea id="topicContent" rows="6" required></textarea>
+            </div>
+            <div class="form-group">
+              <label>Изображение</label>
+              <div class="image-upload">
+                <input type="file" id="topicImage" accept="image/*">
+                <label for="topicImage">ВЫБРАТЬ ФАЙЛ</label>
+                <span id="imageFileName" style="color:#8b6fb0;font-size:0.8rem;"></span>
+              </div>
+              <img id="topicImagePreview" class="image-preview" style="margin-top:0.5rem;">
+            </div>
+            <button type="submit" class="btn">СОЗДАТЬ</button>
+          </form>
+        </div>
+      `;
+
+      document.getElementById('topicImage').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+          document.getElementById('imageFileName').textContent = file.name;
+          const reader = new FileReader();
+          reader.onload = function(ev) {
+            const preview = document.getElementById('topicImagePreview');
+            preview.src = ev.target.result;
+            preview.style.display = 'block';
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+
+      document.getElementById('newTopicForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const title = document.getElementById('topicTitle').value.trim();
+        const content = document.getElementById('topicContent').value.trim();
+        const prefix = document.getElementById('topicPrefix').value;
+        const user = getCurrentUser();
+        const imageFile = document.getElementById('topicImage').files[0];
+
+        if (!user) { showToast('Вы не авторизованы'); window.location.href = 'login.html'; return; }
+        if (!title || title.length < 3) { showToast('Заголовок минимум 3 символа'); return; }
+        if (!content) { showToast('Введите текст'); return; }
+
+        let imageData = null;
+        if (imageFile) imageData = await imageToBase64(imageFile);
+
+        const newTopic = createTopic(catId, title, content, user.username, prefix, imageData);
+        if (newTopic) {
+          showToast('Тема создана');
+          window.location.href = `topic.html?catId=${catId}&id=${newTopic.id}`;
+        } else {
+          showToast('Ошибка');
+        }
+      });
+    }
+
+    function showTopic() {
+      const topic = getTopicById(catId, topicId);
+      const cat = getCategoryById(catId);
+
+      if (!topic || !cat) {
+        container.innerHTML = '<p>Тема не найдена. <a href="index.html">Вернуться</a></p>';
+        return;
+      }
+
+      const currentUser = getCurrentUser();
+      const admin = isAdmin();
+      const isTopicAuthor = currentUser && currentUser.username === topic.author;
+      const prefixLabel = getPrefixLabel(topic.prefix);
+      const prefixClass = getPrefixClass(topic.prefix);
+      const canReply = !topic.locked && cat.allowReplies;
+
+      container.innerHTML = `
+        <div class="breadcrumb">
+          <a href="index.html">Разделы</a> <span>›</span>
+          <a href="category.html?id=${cat.id}">${escapeHtml(cat.name)}</a> <span>›</span> ${escapeHtml(topic.title)}
+        </div>
+        <h1 class="page-title">
+          ${prefixLabel ? `<span class="prefix-badge ${prefixClass}" style="font-size:1rem;margin-right:0.6rem;">${prefixLabel}</span>` : ''}
+          ${escapeHtml(topic.title)}
+          ${topic.locked ? ' 🔒' : ''}
+        </h1>
+
+        <div style="margin-bottom:1.5rem; display:flex; gap:0.8rem; flex-wrap:wrap;">
+          <button class="btn btn-settings btn-sm" onclick="openTopicSettings(${catId}, ${topic.id})">НАСТРОИТЬ ТЕМУ</button>
+          ${isTopicAuthor || admin ? `<button class="btn btn-danger btn-sm" onclick="deleteOwnTopic(${catId}, ${topic.id})">УДАЛИТЬ ТЕМУ</button>` : ''}
+        </div>
+
+        <div class="post">
+          <div class="post-header">
+            <span class="post-avatar">${topic.author.charAt(0).toUpperCase()}</span>
+            <span class="post-author">${escapeHtml(topic.author)}</span>
+            <span class="post-date">${new Date(topic.createdAt).toLocaleString('ru')}</span>
+          </div>
+          <div class="post-content">
+            ${escapeHtml(topic.content)}
+            ${topic.image ? `<img src="${topic.image}">` : ''}
+          </div>
+        </div>
+
+        <h2 style="margin:2rem 0 1rem; color:#c084fc;">ОТВЕТЫ (${topic.replies.length})</h2>
+
+        <div id="repliesContainer"></div>
+
+        ${canReply ? `
+          <div class="form-card form-card-wide" style="margin-top:2rem;">
+            <h3 style="color:#c084fc; margin-bottom:1rem;">ОСТАВИТЬ ОТВЕТ</h3>
+            <form id="replyForm">
+              <div class="form-group">
+                <textarea id="replyContent" rows="4" required></textarea>
+              </div>
+              <div class="form-group">
+                <label>Изображение</label>
+                <div class="image-upload">
+                  <input type="file" id="replyImage" accept="image/*">
+                  <label for="replyImage">ВЫБРАТЬ ФАЙЛ</label>
+                  <span id="replyImageFileName" style="color:#8b6fb0;font-size:0.8rem;"></span>
+                </div>
+                <img id="replyImagePreview" class="image-preview" style="margin-top:0.5rem;">
+              </div>
+              <button type="submit" class="btn">ОТПРАВИТЬ</button>
+            </form>
+          </div>
+        ` : `
+          <div style="margin-top:2rem; padding:1.5rem; background:rgba(12,3,24,0.55); border:1px solid #4c1d95;">
+            <p style="color:#fca5a5;">${topic.locked ? 'Тема закрыта.' : 'Ответы в разделе отключены.'}</p>
+          </div>
+        `}
+      `;
+
+      const repliesContainer = document.getElementById('repliesContainer');
+      if (topic.replies.length === 0) {
+        repliesContainer.innerHTML = '<p style="color:#8b6fb0;">Ответов пока нет.</p>';
+      } else {
+        repliesContainer.innerHTML = topic.replies.map(r => {
+          const isReplyAuthor = currentUser && currentUser.username === r.author;
+          return `
+            <div class="post">
+              <div class="post-header">
+                <span class="post-avatar">${r.author.charAt(0).toUpperCase()}</span>
+                <span class="post-author">${escapeHtml(r.author)}</span>
+                <span class="post-date">${new Date(r.createdAt).toLocaleString('ru')}</span>
+              </div>
+              <div class="post-content">
+                ${escapeHtml(r.content)}
+                ${r.image ? `<img src="${r.image}">` : ''}
+              </div>
+              ${isReplyAuthor || admin ? `
+                <div class="post-actions">
+                  <button onclick="deleteReplyAndRefresh(${catId}, ${topic.id}, ${r.id})">УДАЛИТЬ</button>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('');
+      }
+
+      if (canReply) {
+        document.getElementById('replyImage').addEventListener('change', function(e) {
+          const file = e.target.files[0];
+          if (file) {
+            document.getElementById('replyImageFileName').textContent = file.name;
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+              const preview = document.getElementById('replyImagePreview');
+              preview.src = ev.target.result;
+              preview.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+          }
+        });
+
+        document.getElementById('replyForm').addEventListener('submit', async function(e) {
+          e.preventDefault();
+          const content = document.getElementById('replyContent').value.trim();
+          const user = getCurrentUser();
+          const imageFile = document.getElementById('replyImage').files[0];
+
+          if (!user) { showToast('Вы не авторизованы'); return; }
+          if (!content) { showToast('Введите текст'); return; }
+
+          let imageData = null;
+          if (imageFile) imageData = await imageToBase64(imageFile);
+
+          const reply = addReply(catId, topic.id, content, user.username, imageData);
+          if (reply) {
+            showToast('Ответ добавлен');
+            showTopic();
+          } else {
+            showToast('Ошибка');
+          }
+        });
+      }
+
+      window.deleteOwnTopic = function(cid, tid) {
+        if (confirm('Удалить тему и все ответы?')) {
+          deleteTopic(cid, tid);
+          showToast('Тема удалена');
+          window.location.href = `category.html?id=${cid}`;
+        }
+      };
+    }
+
+    window.openTopicSettings = openTopicSettings;
+
+    window.deleteReplyAndRefresh = function(cid, tid, rid) {
+      if (confirm('Удалить ответ?')) {
+        deleteReply(cid, tid, rid);
+        showToast('Ответ удалён');
+        showTopic();
+      }
+    };
+
+    if (isNew && catId) {
+      showCreateTopicForm();
+    } else if (catId && topicId) {
+      showTopic();
+    } else {
+      container.innerHTML = '<p>Неверные параметры. <a href="index.html">Вернуться</a></p>';
+    }
+  </script>
+</body>
+</html>

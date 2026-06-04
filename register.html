@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AquaMC — Регистрация</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="grid-bg"></div>
+  <div id="particles" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;"></div>
+  <nav id="navbar" class="navbar"></nav>
+
+  <div class="container">
+    <div class="form-card">
+      <h1 class="page-title" style="font-size:1.8rem; margin-bottom:1.8rem;">РЕГИСТРАЦИЯ</h1>
+      <form id="registerForm">
+        <div class="form-group">
+          <label>Имя пользователя</label>
+          <input type="text" id="regUser" required minlength="3" maxlength="16">
+        </div>
+        <div class="form-group">
+          <label>Пароль</label>
+          <input type="password" id="regPass" required minlength="6">
+        </div>
+        <button type="submit" class="btn" style="width:100%;">ЗАРЕГИСТРИРОВАТЬСЯ</button>
+      </form>
+      <div class="form-footer">
+        Уже есть аккаунт? <a href="login.html">Войти</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/auth.js"></script>
+  <script src="js/particles.js"></script>
+  <script>
+    initNavbar();
+
+    document.getElementById('registerForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const username = document.getElementById('regUser').value.trim();
+      const password = document.getElementById('regPass').value.trim();
+
+      if (username.length < 3 || username.length > 16) {
+        showToast('Имя должно быть от 3 до 16 символов');
+        return;
+      }
+      if (password.length < 6) {
+        showToast('Пароль минимум 6 символов');
+        return;
+      }
+
+      const success = registerUser(username, password);
+      if (success) {
+        showToast('Регистрация успешна');
+        setTimeout(() => window.location.href = 'index.html', 800);
+      }
+    });
+  </script>
+</body>
+</html>
