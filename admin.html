@@ -63,6 +63,7 @@
 
       const overlay = document.createElement('div');
       overlay.className = 'modal-overlay';
+      overlay.id = 'editUserOverlay';
       overlay.innerHTML = `
         <div class="modal">
           <h2>РЕДАКТИРОВАНИЕ ПОЛЬЗОВАТЕЛЯ</h2>
@@ -193,6 +194,7 @@
                   <option value="ADMIN">ADMIN</option>
                   <option value="MODER">MODER</option>
                   <option value="HELPER">HELPER</option>
+                  <option value="PLAYER">PLAYER</option>
                 </select>
               ` : ''}
             </div>
