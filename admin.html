@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AquaMC — Админ-панель</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="grid-bg"></div>
+  <div id="particles" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;"></div>
+  <nav id="navbar" class="navbar"></nav>
+
+  <div class="container">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2rem;">
+      <h1 class="page-title" style="margin-bottom:0;">АДМИН-ПАНЕЛЬ</h1>
+      <a href="index.html" class="btn btn-sm">ВЫХОД ИЗ ПАНЕЛИ</a>
+    </div>
+
+    <div style="margin-bottom: 2rem;">
+      <div class="form-group" style="max-width: 400px;">
+        <label>Поиск пользователя</label>
+        <input type="text" id="searchUser" placeholder="Введите ник или ID...">
+      </div>
+    </div>
+
+    <div id="usersList"></div>
+  </div>
+
+  <div class="footer">AQUAMC 2025</div>
+
+  <script src="js/auth.js"></script>
+  <script src="js/particles.js"></script>
+  <script>
+    requireAuth();
+    initNavbar();
+
+    if (!canAccessAdminPanel()) {
+      document.querySelector('.container').innerHTML = '<p style="color:#fca5a5;">Доступ запрещён.</p>';
+    }
+
+    const currentUser = getCurrentUser();
+    const currentRank = getUserRank(currentUser);
+    const isOwner = currentUser.rank === 'OWNER';
+    const isFirstOwner = isOwner && currentUser.id === 1;
+
+    function escapeHtml(text) {
+      const d = document.createElement('div');
+      d.textContent = text;
+      return d.innerHTML;
+    }
+
+    function openEditUserModal(userId) {
+      const users = getUsers();
+      const user = users.find(u => u.id === userId);
+      if (!user) return;
+
+      const isUltraPhoenix = user.id === 1 && user.rank === 'OWNER';
+      if (isUltraPhoenix && !isFirstOwner) {
+        showToast('Нельзя редактировать владельца');
+        return;
+      }
+
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal">
+          <h2>РЕДАКТИРОВАНИЕ ПОЛЬЗОВАТЕЛЯ</h2>
+          <p style="color:#a78bfa; margin-bottom:1.5rem; font-size:1.1rem;">${escapeHtml(user.username)} <span style="color:#6d579b;">#${user.id}</span></p>
+          
+          <div class="settings-section">
+            <h3>Сменить логин</h3>
+            <div class="quick-actions">
+              <input type="text" id="editUsername" value="${escapeHtml(user.username)}" style="background:#0f0720;border:1px solid #4c1d95;color:#f3e8ff;padding:0.5rem 1rem;font-family:inherit;flex:1;">
+              <button class="btn btn-sm" id="applyUsername">СМЕНИТЬ</button>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>Сменить пароль</h3>
+            <div class="quick-actions">
+              <input type="password" id="editPassword" placeholder="Новый пароль" style="background:#0f0720;border:1px solid #4c1d95;color:#f3e8ff;padding:0.5rem 1rem;font-family:inherit;flex:1;">
+              <button class="btn btn-sm" id="applyPassword">СМЕНИТЬ</button>
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button class="btn btn-sm" id="closeEditModal">ЗАКРЫТЬ</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+
+      document.getElementById('closeEditModal').addEventListener('click', () => overlay.remove());
+      overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+
+      document.getElementById('applyUsername').addEventListener('click', function() {
+        const newUsername = document.getElementById('editUsername').value.trim();
+        if (!newUsername || newUsername.length < 3) {
+          showToast('Логин минимум 3 символа');
+          return;
+        }
+        const exists = users.find(u => u.username.toLowerCase() === newUsername.toLowerCase() && u.id !== userId);
+        if (exists) {
+          showToast('Пользователь с таким логином уже существует');
+          return;
+        }
+        if (confirm(`Сменить логин на "${newUsername}"?`)) {
+          user.username = newUsername;
+          saveUsers(users);
+          if (currentUser.id === userId) {
+            saveUser(user);
+            initNavbar();
+          }
+          showToast('Логин изменён');
+        }
+      });
+
+      document.getElementById('applyPassword').addEventListener('click', function() {
+        const newPassword = document.getElementById('editPassword').value.trim();
+        if (!newPassword || newPassword.length < 6) {
+          showToast('Пароль минимум 6 символов');
+          return;
+        }
+        if (confirm(`Сменить пароль для "${user.username}"?`)) {
+          user.password = newPassword;
+          saveUsers(users);
+          if (currentUser.id === userId) {
+            saveUser(user);
+          }
+          showToast('Пароль изменён');
+          document.getElementById('editPassword').value = '';
+        }
+      });
+    }
+
+    function renderUsers(filter = '') {
+      const users = getUsers();
+      const container = document.getElementById('usersList');
+      
+      let filtered = users;
+      if (filter) {
+        const lowerFilter = filter.toLowerCase();
+        filtered = users.filter(u => 
+          u.username.toLowerCase().includes(lowerFilter) ||
+          u.id.toString().includes(lowerFilter)
+        );
+      }
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<p style="color:#8b6fb0;">Пользователи не найдены.</p>';
+        return;
+      }
+
+      container.innerHTML = filtered.map(u => {
+        const isMe = currentUser && currentUser.id === u.id;
+        const targetRank = getUserRank(u);
+        const isUltraPhoenix = u.id === 1 && u.rank === 'OWNER';
+        const canManage = isFirstOwner ? !isMe : (currentRank.level > targetRank.level && !isMe);
+        const canBanUser = canBan() && canManage && !u.banned && !isUltraPhoenix;
+        const canUnbanUser = canBan() && canManage && u.banned && !isUltraPhoenix;
+        const canChangeRank = isFirstOwner ? !isMe : (currentRank.level >= 5 && canManage);
+        const canEdit = isFirstOwner ? !isMe : (canManage || isMe);
+
+        return `
+          <div class="post" style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="display:flex; align-items:center; gap:0.8rem;">
+                <span class="post-avatar">${u.username.charAt(0).toUpperCase()}</span>
+                <div>
+                  <span class="post-author">${escapeHtml(u.username)}</span>
+                  <span style="color:#c084fc; font-size:0.75rem; margin-left:0.5rem;">${u.rank}</span>
+                  <span style="color:#6d579b; font-size:0.7rem; margin-left:0.5rem;">#${u.id}</span>
+                  ${isUltraPhoenix ? '<span style="color:#fbbf24; font-size:0.7rem; margin-left:0.5rem;">ВЛАДЕЛЕЦ</span>' : ''}
+                  ${u.banned ? '<span style="color:#f87171; font-size:0.75rem; margin-left:0.5rem;">ЗАБАНЕН</span>' : ''}
+                  ${isMe ? '<span style="color:#86efac; font-size:0.7rem; margin-left:0.5rem;">ВЫ</span>' : ''}
+                </div>
+              </div>
+              <div style="font-size:0.75rem; color:#7c6a9e; margin-top:0.3rem;">ID: ${u.id} · Зарегистрирован: ${new Date(u.registeredAt).toLocaleString('ru')}</div>
+            </div>
+            <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+              ${canEdit ? `<button class="btn btn-settings btn-sm" onclick="openEditUserModal(${u.id})">РЕДАКТИРОВАТЬ</button>` : ''}
+              ${canBanUser ? `<button class="btn btn-danger btn-sm" onclick="banUser(${u.id})">БАН</button>` : ''}
+              ${canUnbanUser ? `<button class="btn btn-success btn-sm" onclick="unbanUser(${u.id})">РАЗБАН</button>` : ''}
+              ${canChangeRank && !isUltraPhoenix ? `
+                <select onchange="changeRank(${u.id}, this.value)" style="background:#0f0720;border:1px solid #4c1d95;color:#f3e8ff;padding:0.4rem 0.6rem;font-family:inherit;font-size:0.8rem;">
+                  <option value="">Изменить ранг</option>
+                  <option value="SO_OWNER">SO.OWNER</option>
+                  <option value="TEX_ADMIN">TEX.ADMIN</option>
+                  <option value="GL_ADMIN">GL.ADMIN</option>
+                  <option value="CURATOR">CURATOR</option>
+                  <option value="ADMIN">ADMIN</option>
+                  <option value="MODER">MODER</option>
+                  <option value="HELPER">HELPER</option>
+                </select>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    window.openEditUserModal = openEditUserModal;
+
+    window.banUser = function(userId) {
+      if (!canBan()) { showToast('Недостаточно прав'); return; }
+      const users = getUsers();
+      const user = users.find(u => u.id === userId);
+      if (!user) return;
+      const isUltraPhoenix = user.id === 1 && user.rank === 'OWNER';
+      if (isUltraPhoenix) { showToast('Нельзя забанить владельца'); return; }
+      if (confirm(`Забанить ${user.username}?`)) {
+        user.banned = true;
+        saveUsers(users);
+        showToast(`${user.username} забанен`);
+        renderUsers(document.getElementById('searchUser').value);
+      }
+    };
+
+    window.unbanUser = function(userId) {
+      if (!canBan()) { showToast('Недостаточно прав'); return; }
+      const users = getUsers();
+      const user = users.find(u => u.id === userId);
+      if (!user) return;
+      if (confirm(`Разбанить ${user.username}?`)) {
+        user.banned = false;
+        saveUsers(users);
+        showToast(`${user.username} разбанен`);
+        renderUsers(document.getElementById('searchUser').value);
+      }
+    };
+
+    window.changeRank = function(userId, newRank) {
+      if (!newRank) return;
+      const users = getUsers();
+      const user = users.find(u => u.id === userId);
+      if (!user) return;
+      const isUltraPhoenix = user.id === 1 && user.rank === 'OWNER';
+      if (isUltraPhoenix) { showToast('Нельзя изменить ранг владельца'); return; }
+      if (!isFirstOwner && currentRank.level < 5) { showToast('Недостаточно прав'); return; }
+      if (confirm(`Изменить ранг ${user.username} на ${newRank}?`)) {
+        user.rank = newRank;
+        saveUsers(users);
+        showToast(`Ранг ${user.username} изменён на ${newRank}`);
+        renderUsers(document.getElementById('searchUser').value);
+      }
+    };
+
+    document.getElementById('searchUser').addEventListener('input', function() {
+      renderUsers(this.value);
+    });
+
+    renderUsers();
+  </script>
+</body>
+</html>
