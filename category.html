@@ -36,19 +36,32 @@
       return d.innerHTML;
     }
 
-    function openCategorySettings(cid) {
-      const cat = getCategoryById(cid);
+    function getCat() {
+      const cats = JSON.parse(localStorage.getItem('aquamc_categories') || '[]');
+      return cats.find(c => c.id === catId) || null;
+    }
+
+    function saveFullCats(cats) {
+      localStorage.setItem('aquamc_categories', JSON.stringify(cats));
+    }
+
+    function openCategorySettings() {
+      const existing = document.getElementById('catSettingsOverlay');
+      if (existing) existing.remove();
+
+      const cat = getCat();
       if (!cat) return;
 
       const overlay = document.createElement('div');
       overlay.className = 'modal-overlay';
+      overlay.id = 'catSettingsOverlay';
       overlay.innerHTML = `
-        <div class="modal">
+        <div class="modal" id="catSettingsModal">
           <h2>НАСТРОЙКИ РАЗДЕЛА</h2>
           <p style="color:#a78bfa; margin-bottom:1.5rem; font-size:1.1rem;">${escapeHtml(cat.name)}</p>
           <div class="settings-section">
             <h3>Создание тем</h3>
-            <label class="toggle-switch">
+            <label class="toggle-switch" id="topicsLabel">
               <input type="checkbox" id="modalToggleTopics" ${cat.allowTopics ? 'checked' : ''}>
               <span class="toggle-track"></span>
               <span id="topicsStatus">${cat.allowTopics ? 'Разрешено' : 'Запрещено'}</span>
@@ -56,7 +69,7 @@
           </div>
           <div class="settings-section">
             <h3>Ответы в темах</h3>
-            <label class="toggle-switch">
+            <label class="toggle-switch" id="repliesLabel">
               <input type="checkbox" id="modalToggleReplies" ${cat.allowReplies ? 'checked' : ''}>
               <span class="toggle-track"></span>
               <span id="repliesStatus">${cat.allowReplies ? 'Разрешены' : 'Запрещены'}</span>
@@ -75,111 +88,60 @@
 
       document.body.appendChild(overlay);
 
-      document.getElementById('closeModalBtn').addEventListener('click', () => overlay.remove());
-      overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
-
-      document.getElementById('modalToggleTopics').addEventListener('change', function() {
-        updateCategory(cid, { allowTopics: this.checked });
-        document.getElementById('topicsStatus').textContent = this.checked ? 'Разрешено' : 'Запрещено';
-        showToast(this.checked ? 'Создание тем разрешено' : 'Создание тем запрещено');
-        setTimeout(() => { overlay.remove(); renderCategory(); }, 500);
+      document.getElementById('closeModalBtn').addEventListener('click', function() {
+        overlay.remove();
+        renderCategory();
       });
 
-      document.getElementById('modalToggleReplies').addEventListener('change', function() {
-        updateCategory(cid, { allowReplies: this.checked });
-        document.getElementById('repliesStatus').textContent = this.checked ? 'Разрешены' : 'Запрещены';
-        showToast(this.checked ? 'Ответы разрешены' : 'Ответы запрещены');
-        setTimeout(() => { overlay.remove(); renderCategory(); }, 500);
+      document.getElementById('topicsLabel').addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const cb = document.getElementById('modalToggleTopics');
+        cb.checked = !cb.checked;
+        const cats = JSON.parse(localStorage.getItem('aquamc_categories') || '[]');
+        const c = cats.find(c => c.id === catId);
+        if (c) {
+          c.allowTopics = cb.checked;
+          saveFullCats(cats);
+          document.getElementById('topicsStatus').textContent = cb.checked ? 'Разрешено' : 'Запрещено';
+          showToast(cb.checked ? 'Создание тем разрешено' : 'Создание тем запрещено');
+        }
+      });
+
+      document.getElementById('repliesLabel').addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const cb = document.getElementById('modalToggleReplies');
+        cb.checked = !cb.checked;
+        const cats = JSON.parse(localStorage.getItem('aquamc_categories') || '[]');
+        const c = cats.find(c => c.id === catId);
+        if (c) {
+          c.allowReplies = cb.checked;
+          saveFullCats(cats);
+          document.getElementById('repliesStatus').textContent = cb.checked ? 'Разрешены' : 'Запрещены';
+          showToast(cb.checked ? 'Ответы разрешены' : 'Ответы запрещены');
+        }
       });
 
       document.getElementById('modalDeleteCat').addEventListener('click', function() {
         if (confirm('Удалить раздел и все темы внутри?')) {
-          deleteCategory(cid);
+          const cats = JSON.parse(localStorage.getItem('aquamc_categories') || '[]');
+          const filtered = cats.filter(c => c.id !== catId);
+          saveFullCats(filtered);
           showToast('Раздел удалён');
           window.location.href = 'index.html';
         }
       });
     }
 
-    function openTopicSettings(cid, tid) {
-      const topic = getTopicById(cid, tid);
-      if (!topic) return;
-
-      const overlay = document.createElement('div');
-      overlay.className = 'modal-overlay';
-      overlay.innerHTML = `
-        <div class="modal">
-          <h2>НАСТРОЙКИ ТЕМЫ</h2>
-          <p style="color:#a78bfa; margin-bottom:1.5rem; font-size:1.1rem;">${escapeHtml(topic.title)}</p>
-          <div class="settings-section">
-            <h3>Префикс темы</h3>
-            <div class="quick-actions">
-              <select id="modalPrefix" style="background:#0f0720;border:1px solid #4c1d95;color:#f3e8ff;padding:0.5rem 1rem;font-family:inherit;flex:1;">
-                <option value="">Без префикса</option>
-                <option value="approved" ${topic.prefix === 'approved' ? 'selected' : ''}>Одобрено</option>
-                <option value="solved" ${topic.prefix === 'solved' ? 'selected' : ''}>Решено</option>
-                <option value="rejected" ${topic.prefix === 'rejected' ? 'selected' : ''}>Отклонено</option>
-                <option value="pending" ${topic.prefix === 'pending' ? 'selected' : ''}>На рассмотрении</option>
-                <option value="important" ${topic.prefix === 'important' ? 'selected' : ''}>Важно</option>
-              </select>
-              <button class="btn btn-sm" id="modalApplyPrefix">ПРИМЕНИТЬ</button>
-            </div>
-          </div>
-          <div class="settings-section">
-            <h3>Статус темы</h3>
-            <label class="toggle-switch">
-              <input type="checkbox" id="modalToggleLock" ${topic.locked ? 'checked' : ''}>
-              <span class="toggle-track"></span>
-              <span id="lockStatus">${topic.locked ? 'Тема закрыта' : 'Тема открыта'}</span>
-            </label>
-          </div>
-          <div class="settings-section" style="border-color:#991b1b;">
-            <h3 style="color:#fca5a5;">Удаление темы</h3>
-            <p style="color:#8b6fb0; font-size:0.8rem; margin-bottom:0.8rem;">Все ответы будут удалены безвозвратно.</p>
-            <button class="btn btn-danger btn-sm" id="modalDeleteTopic">УДАЛИТЬ ТЕМУ</button>
-          </div>
-          <div class="modal-actions">
-            <button class="btn btn-sm" id="closeModalBtn">ЗАКРЫТЬ</button>
-          </div>
-        </div>
-      `;
-
-      document.body.appendChild(overlay);
-
-      document.getElementById('closeModalBtn').addEventListener('click', () => overlay.remove());
-      overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
-
-      document.getElementById('modalApplyPrefix').addEventListener('click', function() {
-        updateTopic(cid, tid, { prefix: document.getElementById('modalPrefix').value });
-        showToast('Префикс обновлён');
-        overlay.remove();
-        renderCategory();
-      });
-
-      document.getElementById('modalToggleLock').addEventListener('change', function() {
-        updateTopic(cid, tid, { locked: this.checked });
-        document.getElementById('lockStatus').textContent = this.checked ? 'Тема закрыта' : 'Тема открыта';
-        showToast(this.checked ? 'Тема закрыта' : 'Тема открыта');
-        setTimeout(() => { overlay.remove(); renderCategory(); }, 500);
-      });
-
-      document.getElementById('modalDeleteTopic').addEventListener('click', function() {
-        if (confirm('Удалить тему и все ответы?')) {
-          deleteTopic(cid, tid);
-          showToast('Тема удалена');
-          overlay.remove();
-          renderCategory();
-        }
-      });
-    }
-
     function renderCategory() {
-      const cat = getCategoryById(catId);
+      const cat = getCat();
       if (!cat) {
         container.innerHTML = '<p>Раздел не найден.</p>';
         return;
       }
 
+      const hasManagementRights = canManageAll() || canManageTopics();
       const topicsLocked = cat.topics.filter(t => t.locked).length;
 
       container.innerHTML = `
@@ -189,12 +151,12 @@
         <h1 class="page-title">${escapeHtml(cat.name)}</h1>
         <p style="color:#8b6fb0; margin-bottom:0.3rem;">${escapeHtml(cat.description || 'Без описания')}</p>
         <p style="color:#6d579b; margin-bottom:1.5rem; font-size:0.85rem;">
-          ${cat.topics.length} тем · ${topicsLocked} заблокировано
+          ${cat.topics.length} тем · ${topicsLocked} заблокировано · ${cat.allowTopics ? 'Создание тем открыто' : 'Создание тем закрыто'} · ${cat.allowReplies ? 'Ответы открыты' : 'Ответы закрыты'}
         </p>
 
         <div style="margin-bottom: 1.5rem; display:flex; gap:1rem; flex-wrap:wrap; align-items:center;">
           ${cat.allowTopics ? `<a href="topic.html?catId=${cat.id}&new=true" class="btn">НОВАЯ ТЕМА</a>` : '<span style="color:#fca5a5; padding:0.75rem 0;">Создание тем отключено</span>'}
-          <button class="btn btn-settings btn-sm" onclick="openCategorySettings(${cat.id})">НАСТРОИТЬ РАЗДЕЛ</button>
+          ${hasManagementRights ? `<button class="btn btn-settings btn-sm" onclick="openCategorySettings()">НАСТРОИТЬ РАЗДЕЛ</button>` : ''}
         </div>
 
         <div class="topic-list" id="topicList">
@@ -221,16 +183,12 @@
               </a>
               <div style="display:flex; align-items:center; gap:0.8rem;">
                 <span class="topic-replies">${t.replies.length}</span>
-                <button class="btn btn-settings btn-sm" style="padding:0.4rem 0.8rem; font-size:0.7rem;" onclick="event.stopPropagation(); openTopicSettings(${cat.id}, ${t.id})">НАСТРОИТЬ</button>
               </div>
             </div>
           `;
         }).join('');
       }
     }
-
-    window.openCategorySettings = openCategorySettings;
-    window.openTopicSettings = openTopicSettings;
 
     renderCategory();
   </script>
