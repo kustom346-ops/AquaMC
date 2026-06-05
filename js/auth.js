@@ -4,13 +4,14 @@ const LAST_ID_KEY = 'aquamc_last_id';
 
 const ROLES = {
   OWNER: { name: 'OWNER', level: 8, canAll: true },
-  SO_OWNER: { name: 'SO.OWNER', level: 6, canAll: true },
-  TEX_ADMIN: { name: 'TEX.ADMIN', level: 5, canAll: true },
-  GL_ADMIN: { name: 'GL.ADMIN', level: 4, canAll: true },
-  CURATOR: { name: 'CURATOR', level: 3, canAll: true },
-  ADMIN: { name: 'ADMIN', level: 2, canAll: false },
-  MODER: { name: 'MODER', level: 1, canAll: false },
-  HELPER: { name: 'HELPER', level: 0, canAll: false }
+  SO_OWNER: { name: 'SO.OWNER', level: 7, canAll: true },
+  TEX_ADMIN: { name: 'TEX.ADMIN', level: 6, canAll: true },
+  GL_ADMIN: { name: 'GL.ADMIN', level: 5, canAll: true },
+  CURATOR: { name: 'CURATOR', level: 4, canAll: true },
+  ADMIN: { name: 'ADMIN', level: 3, canAll: false },
+  MODER: { name: 'MODER', level: 2, canAll: false },
+  HELPER: { name: 'HELPER', level: 1, canAll: false },
+  PLAYER: { name: 'PLAYER', level: 0, canAll: false }
 };
 
 function getNextId() {
@@ -49,8 +50,8 @@ function requireAuth() {
 }
 
 function getUserRank(user) {
-  if (!user || !user.rank) return ROLES.HELPER;
-  return ROLES[user.rank] || ROLES.HELPER;
+  if (!user || !user.rank) return ROLES.PLAYER;
+  return ROLES[user.rank] || ROLES.PLAYER;
 }
 
 function canManageAll() {
@@ -97,7 +98,7 @@ function registerUser(username, password) {
     showToast('Пользователь уже существует');
     return false;
   }
-  const rank = users.length === 0 ? 'OWNER' : 'HELPER';
+  const rank = users.length === 0 ? 'OWNER' : 'PLAYER';
   const newUser = { 
     id: getNextId(),
     username, 
@@ -150,8 +151,8 @@ function initNavbar() {
     return;
   }
 
-  const rankName = user.rank || 'HELPER';
-  const rankLevel = (ROLES[rankName] || ROLES.HELPER).level;
+  const rankName = user.rank || 'PLAYER';
+  const rankLevel = (ROLES[rankName] || ROLES.PLAYER).level;
   const showAdminBtn = rankLevel >= 1;
 
   navbar.innerHTML = `
