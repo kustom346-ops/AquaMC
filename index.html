@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AquaMC — Разделы форума</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="grid-bg"></div>
+  <div id="particles" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;"></div>
+  <nav id="navbar" class="navbar"></nav>
+
+  <div class="container">
+    <h1 class="page-title">РАЗДЕЛЫ ФОРУМА</h1>
+
+    <div style="margin-bottom: 2rem;">
+      <button class="btn" id="showCreateCatBtn">НОВЫЙ РАЗДЕЛ</button>
+    </div>
+
+    <div id="createCategoryForm" class="form-card form-card-wide" style="display:none; margin-bottom: 2rem;">
+      <h3 style="color:#c084fc; margin-bottom:1rem;">СОЗДАТЬ РАЗДЕЛ</h3>
+      <form id="catForm">
+        <div class="form-group">
+          <label>Название раздела</label>
+          <input type="text" id="catName" required minlength="2">
+        </div>
+        <div class="form-group">
+          <label>Описание</label>
+          <input type="text" id="catDesc">
+        </div>
+        <button type="submit" class="btn">СОЗДАТЬ</button>
+        <button type="button" class="btn btn-sm" style="margin-left:0.5rem; border-color:#4c1d95;" id="hideCreateCatBtn">ОТМЕНА</button>
+      </form>
+    </div>
+
+    <div class="category-grid" id="categoryGrid">
+      <p style="color:#8b6fb0;">Разделов пока нет. Создайте первый.</p>
+    </div>
+  </div>
+
+  <div class="footer">AQUAMC 2025</div>
+
+  <script src="js/auth.js"></script>
+  <script src="js/forum.js"></script>
+  <script src="js/particles.js"></script>
+  <script>
+    requireAuth();
+    initNavbar();
+
+    const catGrid = document.getElementById('categoryGrid');
+    const createFormDiv = document.getElementById('createCategoryForm');
+
+    function escapeHtml(text) {
+      const d = document.createElement('div');
+      d.textContent = text;
+      return d.innerHTML;
+    }
+
+    function openCategorySettings(cid) {
+      const cat = getCategoryById(cid);
+      if (!cat) return;
+
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal">
+          <h2>НАСТРОЙКИ РАЗДЕЛА</h2>
+          <p style="color:#a78bfa; margin-bottom:1.5rem; font-size:1.1rem;">${escapeHtml(cat.name)}</p>
+          <div class="settings-section">
+            <h3>Создание тем</h3>
+            <label class="toggle-switch">
+              <input type="checkbox" id="modalToggleTopics" ${cat.allowTopics ? 'checked' : ''}>
+              <span class="toggle-track"></span>
+              <span id="topicsStatus">${cat.allowTopics ? 'Разрешено' : 'Запрещено'}</span>
+            </label>
+          </div>
+          <div class="settings-section">
+            <h3>Ответы в темах</h3>
+            <label class="toggle-switch">
+              <input type="checkbox" id="modalToggleReplies" ${cat.allowReplies ? 'checked' : ''}>
+              <span class="toggle-track"></span>
+              <span id="repliesStatus">${cat.allowReplies ? 'Разрешены' : 'Запрещены'}</span>
+            </label>
+          </div>
+          <div class="settings-section" style="border-color:#991b1b;">
+            <h3 style="color:#fca5a5;">Удаление раздела</h3>
+            <p style="color:#8b6fb0; font-size:0.8rem; margin-bottom:0.8rem;">Все темы и ответы будут удалены безвозвратно.</p>
+            <button class="btn btn-danger btn-sm" id="modalDeleteCat">УДАЛИТЬ РАЗДЕЛ</button>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-sm" id="closeModalBtn">ЗАКРЫТЬ</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+
+      document.getElementById('closeModalBtn').addEventListener('click', () => overlay.remove());
+      overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+
+      document.getElementById('modalToggleTopics').addEventListener('change', function() {
+        updateCategory(cid, { allowTopics: this.checked });
+        document.getElementById('topicsStatus').textContent = this.checked ? 'Разрешено' : 'Запрещено';
+        showToast(this.checked ? 'Создание тем разрешено' : 'Создание тем запрещено');
+        setTimeout(() => { overlay.remove(); renderCategories(); }, 500);
+      });
+
+      document.getElementById('modalToggleReplies').addEventListener('change', function() {
+        updateCategory(cid, { allowReplies: this.checked });
+        document.getElementById('repliesStatus').textContent = this.checked ? 'Разрешены' : 'Запрещены';
+        showToast(this.checked ? 'Ответы разрешены' : 'Ответы запрещены');
+        setTimeout(() => { overlay.remove(); renderCategories(); }, 500);
+      });
+
+      document.getElementById('modalDeleteCat').addEventListener('click', function() {
+        if (confirm('Удалить раздел и все темы внутри?')) {
+          deleteCategory(cid);
+          showToast('Раздел удалён');
+          overlay.remove();
+          renderCategories();
+        }
+      });
+    }
+
+    function renderCategories() {
+      const cats = getCategories();
+      if (cats.length === 0) {
+        catGrid.innerHTML = '<p style="color:#8b6fb0;">Разделов пока нет. Создайте первый.</p>';
+        return;
+      }
+      catGrid.innerHTML = cats.map(c => `
+        <div class="category-card">
+          <a href="category.html?id=${c.id}" style="text-decoration:none; color:inherit; flex:1; display:flex; align-items:center; justify-content:space-between;">
+            <div class="cat-info">
+              <div class="cat-name">${escapeHtml(c.name)}</div>
+              <div class="cat-desc">${escapeHtml(c.description || 'Без описания')}</div>
+              <div class="cat-meta">
+                <span>${c.allowTopics ? 'Темы открыты' : 'Темы закрыты'}</span>
+                <span>${c.allowReplies ? 'Ответы открыты' : 'Ответы закрыты'}</span>
+              </div>
+            </div>
+            <div class="cat-stats">
+              <div class="cat-stat-item">ТЕМ</div>
+              <div class="cat-stat-value">${c.topics.length}</div>
+            </div>
+          </a>
+          <button class="btn btn-settings btn-sm" style="margin-left:2rem; flex-shrink:0;" onclick="event.preventDefault(); event.stopPropagation(); openCategorySettings(${c.id})">
+            НАСТРОИТЬ
+          </button>
+        </div>
+      `).join('');
+    }
+
+    window.openCategorySettings = openCategorySettings;
+
+    document.getElementById('showCreateCatBtn').addEventListener('click', () => createFormDiv.style.display = 'block');
+    document.getElementById('hideCreateCatBtn').addEventListener('click', () => { createFormDiv.style.display = 'none'; document.getElementById('catForm').reset(); });
+
+    document.getElementById('catForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const name = document.getElementById('catName').value.trim();
+      const desc = document.getElementById('catDesc').value.trim();
+      if (name.length < 2) { showToast('Название минимум 2 символа'); return; }
+      createCategory(name, desc, true, true);
+      showToast('Раздел создан');
+      createFormDiv.style.display = 'none';
+      document.getElementById('catForm').reset();
+      renderCategories();
+    });
+
+    renderCategories();
+  </script>
+</body>
+</html>

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AquaMC — Раздел</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="grid-bg"></div>
+  <div id="particles" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;"></div>
+  <nav id="navbar" class="navbar"></nav>
+
+  <div class="container" id="categoryContainer"></div>
+
+  <div class="footer">AQUAMC 2025</div>
+
+  <script src="js/auth.js"></script>
+  <script src="js/forum.js"></script>
+  <script src="js/particles.js"></script>
+  <script>
+    requireAuth();
+    initNavbar();
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const catId = Number(urlParams.get('id'));
+    const container = document.getElementById('categoryContainer');
+
+    if (!catId) {
+      container.innerHTML = '<p>Раздел не найден.</p>';
+    }
+
+    function escapeHtml(text) {
+      const d = document.createElement('div');
+      d.textContent = text;
+      return d.innerHTML;
+    }
+
+    function getCat() {
+      const cats = JSON.parse(localStorage.getItem('aquamc_categories') || '[]');
+      return cats.find(c => c.id === catId) || null;
+    }
+
+    function saveFullCats(cats) {
+      localStorage.setItem('aquamc_categories', JSON.stringify(cats));
+    }
+
+    function openCategorySettings() {
+      const existing = document.getElementById('catSettingsOverlay');
+      if (existing) existing.remove();
+
+      const cat = getCat();
+      if (!cat) return;
+
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.id = 'catSettingsOverlay';
+      overlay.innerHTML = `
+        <div class="modal" id="catSettingsModal">
+          <h2>НАСТРОЙКИ РАЗДЕЛА</h2>
+          <p style="color:#a78bfa; margin-bottom:1.5rem; font-size:1.1rem;">${escapeHtml(cat.name)}</p>
+          <div class="settings-section">
+            <h3>Создание тем</h3>
+            <label class="toggle-switch" id="topicsLabel">
+              <input type="checkbox" id="modalToggleTopics" ${cat.allowTopics ? 'checked' : ''}>
+              <span class="toggle-track"></span>
+              <span id="topicsStatus">${cat.allowTopics ? 'Разрешено' : 'Запрещено'}</span>
+            </label>
+          </div>
+          <div class="settings-section">
+            <h3>Ответы в темах</h3>
+            <label class="toggle-switch" id="repliesLabel">
+              <input type="checkbox" id="modalToggleReplies" ${cat.allowReplies ? 'checked' : ''}>
+              <span class="toggle-track"></span>
+              <span id="repliesStatus">${cat.allowReplies ? 'Разрешены' : 'Запрещены'}</span>
+            </label>
+          </div>
+          <div class="settings-section" style="border-color:#991b1b;">
+            <h3 style="color:#fca5a5;">Удаление раздела</h3>
+            <p style="color:#8b6fb0; font-size:0.8rem; margin-bottom:0.8rem;">Все темы и ответы будут удалены безвозвратно.</p>
+            <button class="btn btn-danger btn-sm" id="modalDeleteCat">УДАЛИТЬ РАЗДЕЛ</button>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-sm" id="closeModalBtn">ЗАКРЫТЬ</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+
+      document.getElementById('closeModalBtn').addEventListener('click', function() {
+        overlay.remove();
+        renderCategory();
+      });
+
+      document.getElementById('topicsLabel').addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const cb = document.getElementById('modalToggleTopics');
+        cb.checked = !cb.checked;
+        const cats = JSON.parse(localStorage.getItem('aquamc_categories') || '[]');
+        const c = cats.find(c => c.id === catId);
+        if (c) {
+          c.allowTopics = cb.checked;
+          saveFullCats(cats);
+          document.getElementById('topicsStatus').textContent = cb.checked ? 'Разрешено' : 'Запрещено';
+          showToast(cb.checked ? 'Создание тем разрешено' : 'Создание тем запрещено');
+        }
+      });
+
+      document.getElementById('repliesLabel').addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const cb = document.getElementById('modalToggleReplies');
+        cb.checked = !cb.checked;
+        const cats = JSON.parse(localStorage.getItem('aquamc_categories') || '[]');
+        const c = cats.find(c => c.id === catId);
+        if (c) {
+          c.allowReplies = cb.checked;
+          saveFullCats(cats);
+          document.getElementById('repliesStatus').textContent = cb.checked ? 'Разрешены' : 'Запрещены';
+          showToast(cb.checked ? 'Ответы разрешены' : 'Ответы запрещены');
+        }
+      });
+
+      document.getElementById('modalDeleteCat').addEventListener('click', function() {
+        if (confirm('Удалить раздел и все темы внутри?')) {
+          const cats = JSON.parse(localStorage.getItem('aquamc_categories') || '[]');
+          const filtered = cats.filter(c => c.id !== catId);
+          saveFullCats(filtered);
+          showToast('Раздел удалён');
+          window.location.href = 'index.html';
+        }
+      });
+    }
+
+    function renderCategory() {
+      const cat = getCat();
+      if (!cat) {
+        container.innerHTML = '<p>Раздел не найден.</p>';
+        return;
+      }
+
+      const hasManagementRights = canManageAll() || canManageTopics();
+      const topicsLocked = cat.topics.filter(t => t.locked).length;
+
+      container.innerHTML = `
+        <div class="breadcrumb">
+          <a href="index.html">Разделы</a> <span>›</span> ${escapeHtml(cat.name)}
+        </div>
+        <h1 class="page-title">${escapeHtml(cat.name)}</h1>
+        <p style="color:#8b6fb0; margin-bottom:0.3rem;">${escapeHtml(cat.description || 'Без описания')}</p>
+        <p style="color:#6d579b; margin-bottom:1.5rem; font-size:0.85rem;">
+          ${cat.topics.length} тем · ${topicsLocked} заблокировано · ${cat.allowTopics ? 'Создание тем открыто' : 'Создание тем закрыто'} · ${cat.allowReplies ? 'Ответы открыты' : 'Ответы закрыты'}
+        </p>
+
+        <div style="margin-bottom: 1.5rem; display:flex; gap:1rem; flex-wrap:wrap; align-items:center;">
+          ${cat.allowTopics ? `<a href="topic.html?catId=${cat.id}&new=true" class="btn">НОВАЯ ТЕМА</a>` : '<span style="color:#fca5a5; padding:0.75rem 0;">Создание тем отключено</span>'}
+          ${hasManagementRights ? `<button class="btn btn-settings btn-sm" onclick="openCategorySettings()">НАСТРОИТЬ РАЗДЕЛ</button>` : ''}
+        </div>
+
+        <div class="topic-list" id="topicList">
+          ${cat.topics.length === 0 ? '<p style="color:#8b6fb0;">Тем пока нет.</p>' : ''}
+        </div>
+      `;
+
+      const topicList = document.getElementById('topicList');
+      if (cat.topics.length > 0) {
+        topicList.innerHTML = cat.topics.map(t => {
+          const prefixLabel = getPrefixLabel(t.prefix);
+          const prefixClass = getPrefixClass(t.prefix);
+          return `
+            <div class="topic-card ${t.locked ? 'locked' : ''}" style="display:flex; justify-content:space-between; align-items:center;">
+              <a href="topic.html?catId=${cat.id}&id=${t.id}" style="text-decoration:none; color:inherit; flex:1;">
+                <div>
+                  <div class="topic-title">
+                    ${prefixLabel ? `<span class="prefix-badge ${prefixClass}">${prefixLabel}</span>` : ''}
+                    ${escapeHtml(t.title)}
+                    ${t.locked ? ' 🔒' : ''}
+                  </div>
+                  <div class="topic-meta">${escapeHtml(t.author)} — ${new Date(t.createdAt).toLocaleString('ru')}</div>
+                </div>
+              </a>
+              <div style="display:flex; align-items:center; gap:0.8rem;">
+                <span class="topic-replies">${t.replies.length}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+
+    renderCategory();
+  </script>
+</body>
+</html>
