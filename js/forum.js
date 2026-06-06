@@ -52,6 +52,7 @@ function createTopic(catId, title, content, author, prefix, imageData) {
     image: imageData || null,
     createdAt: new Date().toISOString(),
     locked: false,
+    pinned: false,
     replies: []
   };
   cat.topics.unshift(newTopic);
