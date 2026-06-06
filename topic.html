@@ -244,7 +244,6 @@
         </h1>
 
         <div style="margin-bottom:1.5rem; display:flex; gap:0.8rem; flex-wrap:wrap;">
-          ${hasManagementRights ? `<button class="btn btn-settings btn-sm" onclick="openTopicSettings(${catId}, ${topic.id})">НАСТРОИТЬ ТЕМУ</button>` : ''}
           ${isTopicAuthor || hasManagementRights ? `<button class="btn btn-danger btn-sm" onclick="deleteOwnTopic(${catId}, ${topic.id})">УДАЛИТЬ ТЕМУ</button>` : ''}
         </div>
 
