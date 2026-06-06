@@ -134,6 +134,135 @@
       });
     }
 
+    function openTopicSettings(tid) {
+      const existing = document.getElementById('topicSettingsOverlay');
+      if (existing) existing.remove();
+
+      const cats = JSON.parse(localStorage.getItem('aquamc_categories') || '[]');
+      const cat = cats.find(c => c.id === catId);
+      if (!cat) return;
+      const topic = cat.topics.find(t => t.id === tid);
+      if (!topic) return;
+
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.id = 'topicSettingsOverlay';
+      overlay.innerHTML = `
+        <div class="modal" id="topicSettingsModal">
+          <h2>НАСТРОЙКИ ТЕМЫ</h2>
+          <p style="color:#a78bfa; margin-bottom:1.5rem; font-size:1.1rem;">${escapeHtml(topic.title)}</p>
+          <div class="settings-section">
+            <h3>Префикс темы</h3>
+            <div class="quick-actions">
+              <select id="modalPrefix" style="background:#0f0720;border:1px solid #4c1d95;color:#f3e8ff;padding:0.5rem 1rem;font-family:inherit;flex:1;">
+                <option value="">Без префикса</option>
+                <option value="approved" ${topic.prefix === 'approved' ? 'selected' : ''}>Одобрено</option>
+                <option value="solved" ${topic.prefix === 'solved' ? 'selected' : ''}>Решено</option>
+                <option value="rejected" ${topic.prefix === 'rejected' ? 'selected' : ''}>Отклонено</option>
+                <option value="pending" ${topic.prefix === 'pending' ? 'selected' : ''}>На рассмотрении</option>
+                <option value="important" ${topic.prefix === 'important' ? 'selected' : ''}>Важно</option>
+              </select>
+              <button class="btn btn-sm" id="modalApplyPrefix">ПРИМЕНИТЬ</button>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3>Статус темы</h3>
+            <label class="toggle-switch" id="lockLabel">
+              <input type="checkbox" id="modalToggleLock" ${topic.locked ? 'checked' : ''}>
+              <span class="toggle-track"></span>
+              <span id="lockStatus">${topic.locked ? 'Тема закрыта' : 'Тема открыта'}</span>
+            </label>
+          </div>
+          <div class="settings-section">
+            <h3>Закрепление темы</h3>
+            <label class="toggle-switch" id="pinLabel">
+              <input type="checkbox" id="modalTogglePin" ${topic.pinned ? 'checked' : ''}>
+              <span class="toggle-track"></span>
+              <span id="pinStatus">${topic.pinned ? 'Закреплена' : 'Не закреплена'}</span>
+            </label>
+          </div>
+          <div class="settings-section" style="border-color:#991b1b;">
+            <h3 style="color:#fca5a5;">Удаление темы</h3>
+            <p style="color:#8b6fb0; font-size:0.8rem; margin-bottom:0.8rem;">Все ответы будут удалены безвозвратно.</p>
+            <button class="btn btn-danger btn-sm" id="modalDeleteTopic">УДАЛИТЬ ТЕМУ</button>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-sm" id="closeModalBtn">ЗАКРЫТЬ</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+
+      document.getElementById('closeModalBtn').addEventListener('click', function() {
+        overlay.remove();
+        renderCategory();
+      });
+
+      document.getElementById('modalApplyPrefix').addEventListener('click', function() {
+        const cats = JSON.parse(localStorage.getItem('aquamc_categories') || '[]');
+        const c = cats.find(c => c.id === catId);
+        if (c) {
+          const t = c.topics.find(t => t.id === tid);
+          if (t) {
+            t.prefix = document.getElementById('modalPrefix').value;
+            saveFullCats(cats);
+            showToast('Префикс обновлён');
+          }
+        }
+      });
+
+      document.getElementById('lockLabel').addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const cb = document.getElementById('modalToggleLock');
+        cb.checked = !cb.checked;
+        const cats = JSON.parse(localStorage.getItem('aquamc_categories') || '[]');
+        const c = cats.find(c => c.id === catId);
+        if (c) {
+          const t = c.topics.find(t => t.id === tid);
+          if (t) {
+            t.locked = cb.checked;
+            saveFullCats(cats);
+            document.getElementById('lockStatus').textContent = cb.checked ? 'Тема закрыта' : 'Тема открыта';
+            showToast(cb.checked ? 'Тема закрыта' : 'Тема открыта');
+          }
+        }
+      });
+
+      document.getElementById('pinLabel').addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const cb = document.getElementById('modalTogglePin');
+        cb.checked = !cb.checked;
+        const cats = JSON.parse(localStorage.getItem('aquamc_categories') || '[]');
+        const c = cats.find(c => c.id === catId);
+        if (c) {
+          const t = c.topics.find(t => t.id === tid);
+          if (t) {
+            t.pinned = cb.checked;
+            saveFullCats(cats);
+            document.getElementById('pinStatus').textContent = cb.checked ? 'Закреплена' : 'Не закреплена';
+            showToast(cb.checked ? 'Тема закреплена' : 'Тема откреплена');
+          }
+        }
+      });
+
+      document.getElementById('modalDeleteTopic').addEventListener('click', function() {
+        if (confirm('Удалить тему и все ответы?')) {
+          const cats = JSON.parse(localStorage.getItem('aquamc_categories') || '[]');
+          const c = cats.find(c => c.id === catId);
+          if (c) {
+            c.topics = c.topics.filter(t => t.id !== tid);
+            saveFullCats(cats);
+            showToast('Тема удалена');
+            overlay.remove();
+            renderCategory();
+          }
+        }
+      });
+    }
+
     function renderCategory() {
       const cat = getCat();
       if (!cat) {
@@ -143,6 +272,7 @@
 
       const hasManagementRights = canManageAll() || canManageTopics();
       const topicsLocked = cat.topics.filter(t => t.locked).length;
+      const topicsPinned = cat.topics.filter(t => t.pinned).length;
 
       container.innerHTML = `
         <div class="breadcrumb">
@@ -151,7 +281,7 @@
         <h1 class="page-title">${escapeHtml(cat.name)}</h1>
         <p style="color:#8b6fb0; margin-bottom:0.3rem;">${escapeHtml(cat.description || 'Без описания')}</p>
         <p style="color:#6d579b; margin-bottom:1.5rem; font-size:0.85rem;">
-          ${cat.topics.length} тем · ${topicsLocked} заблокировано · ${cat.allowTopics ? 'Создание тем открыто' : 'Создание тем закрыто'} · ${cat.allowReplies ? 'Ответы открыты' : 'Ответы закрыты'}
+          ${cat.topics.length} тем · ${topicsLocked} заблокировано · ${topicsPinned} закреплено · ${cat.allowTopics ? 'Создание тем открыто' : 'Создание тем закрыто'} · ${cat.allowReplies ? 'Ответы открыты' : 'Ответы закрыты'}
         </p>
 
         <div style="margin-bottom: 1.5rem; display:flex; gap:1rem; flex-wrap:wrap; align-items:center;">
@@ -166,14 +296,21 @@
 
       const topicList = document.getElementById('topicList');
       if (cat.topics.length > 0) {
-        topicList.innerHTML = cat.topics.map(t => {
+        const sortedTopics = [...cat.topics].sort((a, b) => {
+          if (a.pinned && !b.pinned) return -1;
+          if (!a.pinned && b.pinned) return 1;
+          return 0;
+        });
+
+        topicList.innerHTML = sortedTopics.map(t => {
           const prefixLabel = getPrefixLabel(t.prefix);
           const prefixClass = getPrefixClass(t.prefix);
           return `
-            <div class="topic-card ${t.locked ? 'locked' : ''}" style="display:flex; justify-content:space-between; align-items:center;">
+            <div class="topic-card ${t.locked ? 'locked' : ''} ${t.pinned ? 'pinned' : ''}" style="display:flex; justify-content:space-between; align-items:center;">
               <a href="topic.html?catId=${cat.id}&id=${t.id}" style="text-decoration:none; color:inherit; flex:1;">
                 <div>
                   <div class="topic-title">
+                    ${t.pinned ? '📌 ' : ''}
                     ${prefixLabel ? `<span class="prefix-badge ${prefixClass}">${prefixLabel}</span>` : ''}
                     ${escapeHtml(t.title)}
                     ${t.locked ? ' 🔒' : ''}
@@ -183,6 +320,7 @@
               </a>
               <div style="display:flex; align-items:center; gap:0.8rem;">
                 <span class="topic-replies">${t.replies.length}</span>
+                ${hasManagementRights ? `<button class="btn btn-settings btn-sm" style="padding:0.4rem 0.8rem; font-size:0.7rem;" onclick="event.stopPropagation(); openTopicSettings(${t.id})">НАСТРОИТЬ</button>` : ''}
               </div>
             </div>
           `;
